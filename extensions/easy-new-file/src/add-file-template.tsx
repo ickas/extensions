@@ -1,8 +1,9 @@
-import { Action, ActionPanel, environment, Form, Icon, popToRoot, showHUD, showToast, Toast, open } from "@raycast/api";
-import React, { useEffect, useState } from "react";
-import { checkIsFile, getChooseFile, getSelectedFile } from "./utils/common-utils";
+import { Action, ActionPanel, environment, Form, Icon, popToRoot, showHUD, showToast, Toast } from "@raycast/api";
+import React, { Dispatch, SetStateAction, useEffect, useState } from "react";
+import { checkIsFile, getSelectedFile, isEmpty } from "./utils/common-utils";
 import fse from "fs-extra";
 import { parse } from "path";
+import { ActionOpenCommandPreferences } from "./components/action-open-command-preferences";
 
 export default function AddFileTemplate(props: { setRefresh: React.Dispatch<React.SetStateAction<number>> }) {
   const setRefresh =
@@ -11,14 +12,17 @@ export default function AddFileTemplate(props: { setRefresh: React.Dispatch<Reac
           return;
         }
       : props.setRefresh;
-  const [path, setPath] = useState<string>("");
+  const [filePaths, setFilePaths] = useState<string[]>([]);
   const [name, setName] = useState<string>("");
+  const [pathError, setPathError] = useState<string | undefined>();
 
   useEffect(() => {
     async function _fetchFilePath() {
       const _path = await fetchFilePath(true);
-      setPath(_path);
-      setName(parse(_path).name);
+      if (!isEmpty(_path)) {
+        setFilePaths(new Array(_path));
+        setName(parse(_path).name);
+      }
     }
 
     _fetchFilePath().then();
@@ -31,62 +35,71 @@ export default function AddFileTemplate(props: { setRefresh: React.Dispatch<Reac
         <ActionPanel>
           <Action
             title={"Add File Template"}
-            icon={Icon.TextDocument}
+            icon={Icon.NewDocument}
             onAction={async () => {
-              await addFileTemplate(name, path);
+              if (filePaths.length === 0) {
+                setPathError("Select a file first!");
+                return;
+              }
+              let finalName = name;
+              if (isEmpty(name)) {
+                finalName = parse(filePaths[0]).name;
+              }
+              await addFileTemplate(finalName, filePaths[0], setPathError);
               setRefresh(Date.now());
             }}
           />
 
-          <ActionPanel.Section title="File Path Action">
+          <ActionPanel.Section>
             <Action
               title={"Fetch File Path"}
-              icon={Icon.TwoArrowsClockwise}
+              icon={Icon.Repeat}
               shortcut={{ modifiers: ["cmd"], key: "f" }}
               onAction={async () => {
                 const _path = await fetchFilePath();
-                setPath(_path);
                 setName(parse(_path).name);
               }}
             />
-            <Action
-              title={"Choose File Path"}
-              icon={Icon.Sidebar}
-              shortcut={{ modifiers: ["shift", "ctrl"], key: "c" }}
-              onAction={() => {
-                getChooseFile().then((path) => {
-                  open("raycast://").then();
-                  setPath(path);
-                  setName(parse(path).name);
-                });
-              }}
-            />
           </ActionPanel.Section>
+          <ActionOpenCommandPreferences />
         </ActionPanel>
       }
     >
       <Form.Description
-        title="Information"
+        title="Tips"
         text={`Templates added will automatically be available in the New File Here command.`}
       />
-      <Form.TextArea
+      <Form.FilePicker
         id={"path"}
         title={"Path"}
-        placeholder={"/xxx/xxx"}
-        value={path}
-        onChange={setPath}
-        info={
-          "Insert the full path of the file used for the template. If you select a file before opening this command, its path is automatically added."
-        }
+        value={filePaths}
+        error={pathError}
+        allowMultipleSelection={false}
+        showHiddenFiles={false}
+        canChooseDirectories={false}
+        onChange={(newValue) => {
+          setFilePaths(newValue);
+          setName(parse(newValue[0]).name);
+          if (newValue.length > 0) {
+            setPathError(undefined);
+          }
+        }}
+        onBlur={(event) => {
+          if (event.target.value?.length == 0) {
+            setPathError("Select a file first!");
+          } else {
+            setPathError(undefined);
+          }
+        }}
+        info={"If you select a file before opening this command, its filePaths is automatically added."}
       />
       <Form.TextField
         id={"name"}
         title={"Name"}
         placeholder={"File name without extension(Optional)"}
-        value={parse(path).name}
+        value={name}
         onChange={setName}
       />
-      <Form.Description title={"Extension"} text={parse(path).name} />
     </Form>
   );
 }
@@ -101,31 +114,37 @@ const fetchFilePath = async (enterCommand = false) => {
     return _finderItems[0];
   } else {
     if (!enterCommand) {
-      await showToast(Toast.Style.Failure, "Fetch nothing.", "Please select a file or input manually.");
+      await showToast(Toast.Style.Failure, "Fetch nothing.", "Please select a file.");
     }
     return "";
   }
 };
 
-const addFileTemplate = async (name: string, path: string) => {
+const addFileTemplate = async (
+  name: string,
+  path: string,
+  setPathError: Dispatch<SetStateAction<string | undefined>>,
+) => {
   if (fse.existsSync(path)) {
     if (checkIsFile(path)) {
       const templateFolderPath = environment.supportPath + "/templates";
       const desPath = templateFolderPath + "/" + name + parse(path).ext;
       if (fse.existsSync(desPath)) {
-        await showToast(Toast.Style.Failure, "File already exists.\nPlease rename.");
+        setPathError("File already exists! Please rename!");
         return;
       }
 
+      console.log("filepath " + path);
+      console.log(templateFolderPath);
       fse.ensureDirSync(templateFolderPath);
       fse.copyFileSync(path, desPath);
 
-      await showHUD("Template added");
+      await showHUD("📃 Template added");
       await popToRoot({ clearSearchBar: false });
     } else {
-      await showToast(Toast.Style.Failure, "Folder path not supported.");
+      setPathError("Folder path is not supported!");
     }
   } else {
-    await showToast(Toast.Style.Failure, "Path is invalid.");
+    setPathError("Path is invalid!");
   }
 };

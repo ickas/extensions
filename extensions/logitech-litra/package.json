@@ -1,0 +1,65 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "logitech-litra",
+  "title": "Logitech Litra",
+  "description": "Manage USB-connected Logitech Litra Glow, Litra Beam and Litra Beam LX lights from Raycast",
+  "icon": "command-icon.png",
+  "author": "timrogers",
+  "categories": [
+    "Productivity"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "manage-devices",
+      "title": "Manage Devices",
+      "subtitle": "Turn on and off, and set brightness and temperature",
+      "description": "Turn your USB-connected Logitech Litra devices on or off, and set their brightness and temperature",
+      "mode": "view"
+    },
+    {
+      "name": "manage-temperature-presets",
+      "title": "Manage Temperature Presets",
+      "subtitle": "Set up presets for your Litra devices' temperature",
+      "description": "Configure presets so you can manage your Litra devices' temperature from Raycast",
+      "mode": "view"
+    },
+    {
+      "name": "manage-brightness-presets",
+      "title": "Manage Brightness Presets",
+      "subtitle": "Set up presets for your Litra devices' brightness",
+      "description": "Configure presets so you can manage your Litra devices' brightness from Raycast",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "litraBinaryPath",
+      "type": "textfield",
+      "required": true,
+      "title": "`litra` binary path",
+      "description": "The path to the `litra` binary. You can install the `litra` command line tool by following the instructions at https://github.com/timrogers/litra-rs, and then running `which litra` to get the path."
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.58.0",
+    "semver": "^7.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "20.10.7",
+    "@types/react": "18.2.6",
+    "@typescript-eslint/eslint-plugin": "^6.16.0",
+    "@typescript-eslint/parser": "^6.12.0",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.1.1",
+    "typescript": "^5.3.3"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "publish": "ray publish"
+  }
+}

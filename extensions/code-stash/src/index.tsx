@@ -1,9 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
-import { nanoid } from "nanoid";
 import { ActionPanel, Icon, List, LocalStorage, confirmAlert, Alert } from "@raycast/api";
 import { Language, CodeStash } from "./types";
-import { Preview, ViewAction, CreateAction, DeleteAction, EmptyView, CopyAction } from "./components";
-import { useCopy } from "./actions";
+import {
+  Preview,
+  ViewAction,
+  CreateAction,
+  DeleteAction,
+  EmptyView,
+  CopyAction,
+  ExportAction,
+  EditAction,
+  ImportAction,
+} from "./components";
+import { useCopy, useExport, useImport } from "./actions";
+import { nanoid } from "nanoid";
+import detectLang from "lang-detector";
 
 type State = {
   filter: Language;
@@ -22,7 +33,9 @@ export default function Command() {
     visibleCodeStashes: [],
   });
 
-  const { copy } = useCopy();
+  const { handleCopy } = useCopy();
+  const { handleExport } = useExport();
+  const { readFile, readFolder, isValidFile, isFolder } = useImport();
 
   useEffect(() => {
     (async () => {
@@ -52,8 +65,8 @@ export default function Command() {
   }, [state.codeStashes]);
 
   const handleCreate = useCallback(
-    (title: string, code: string, language: string) => {
-      const newCodeStashes = [...state.codeStashes, { id: nanoid(), title, code, language }];
+    (title: string, code: string, language: string, id: string) => {
+      const newCodeStashes = [...state.codeStashes, { id, title, code, language }];
       setState((previous) => ({
         ...previous,
         codeStashes: newCodeStashes,
@@ -62,6 +75,23 @@ export default function Command() {
       }));
     },
     [state.codeStashes, setState]
+  );
+
+  const handleEdit = useCallback(
+    (title: string, code: string, language: string, id: string) => {
+      setState((prevState) => {
+        const newCodeStashes = [...prevState.codeStashes];
+        const index = newCodeStashes.findIndex((codeStash) => codeStash.id === id);
+        newCodeStashes[index] = { id, title, code, language };
+        return {
+          ...prevState,
+          codeStashes: newCodeStashes,
+          filter: Language.All,
+          searchText: "",
+        };
+      });
+    },
+    [setState]
   );
 
   const deleteAlertOptions: Alert.Options = {
@@ -76,6 +106,41 @@ export default function Command() {
       newCodeStashes.splice(index, 1);
       setState((previous: any) => ({ ...previous, codeStashes: newCodeStashes }));
     }
+  }
+
+  async function buildImportedCodeStash(file: string) {
+    const data = await readFile(file);
+    const filename = file.replace(/^.*[\\/]/, "").replace(/.txt$/, "");
+
+    const lang = detectLang(data) ?? "Unknown";
+
+    if (data) {
+      return { id: nanoid(), title: filename, code: data, language: lang };
+    }
+  }
+
+  async function handleImport(files: string[]) {
+    const importedStashes = [] as CodeStash[];
+
+    for (const file of files) {
+      if (isValidFile(file) || isFolder(file)) {
+        const fileList = isValidFile(file) ? [file] : await readFolder(file);
+
+        if (!fileList) continue;
+
+        for (const file of fileList) {
+          const codeStash = await buildImportedCodeStash(file);
+          if (codeStash) importedStashes.push(codeStash);
+        }
+      }
+    }
+
+    setState((previous) => ({
+      ...previous,
+      codeStashes: [...previous.codeStashes, ...importedStashes],
+      filter: Language.All,
+      searchText: "",
+    }));
   }
 
   const filterCodeStashes = useCallback(() => {
@@ -114,7 +179,12 @@ export default function Command() {
         setState((previous) => ({ ...previous, searchText: newValue }));
       }}
     >
-      <EmptyView codeStashes={filterCodeStashes()} searchText={state.searchText} onCreate={handleCreate} />
+      <EmptyView
+        codeStashes={filterCodeStashes()}
+        searchText={state.searchText}
+        onCreate={handleCreate}
+        onImport={(files) => handleImport(files)}
+      />
       {filterCodeStashes().map((codeStash, index) => (
         <List.Item
           key={codeStash.id}
@@ -126,9 +196,14 @@ export default function Command() {
             <ActionPanel>
               <ActionPanel.Section>
                 <ViewAction codeStash={codeStash} />
-                <CopyAction onCopy={() => copy(index, state.codeStashes)} />
+                <CopyAction onCopy={() => handleCopy(index, state.codeStashes)} />
                 <CreateAction onCreate={handleCreate} />
+                <EditAction codeStash={codeStash} onEdit={handleEdit} />
                 <DeleteAction onDelete={() => handleDelete(index)} />
+              </ActionPanel.Section>
+              <ActionPanel.Section>
+                <ExportAction onExport={() => handleExport(state.codeStashes)} />
+                <ImportAction onImport={(files) => handleImport(files)} />
               </ActionPanel.Section>
             </ActionPanel>
           }

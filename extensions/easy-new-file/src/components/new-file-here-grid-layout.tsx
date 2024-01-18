@@ -14,11 +14,12 @@ export function NewFileHereGridLayout(props: {
   setRefresh: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const { isLoading, templateFiles, setRefresh } = props;
-  const { layout, itemSize, itemInset, showDocument, showCode, showScript } = getPreferenceValues<Preferences>();
+  const { layout, columns, itemInset, showDocument, showCode, showScript } = getPreferenceValues<Preferences>();
   return (
     <Grid
       inset={isEmpty(itemInset) ? undefined : (itemInset as Grid.Inset)}
-      itemSize={itemSize as Grid.ItemSize}
+      columns={parseInt(columns)}
+      aspectRatio={"3/2"}
       isLoading={isLoading}
       searchBarPlaceholder={"Search and create files"}
       selectedItemId={templateFiles.length > 0 ? templateFiles[0].path : ""}
@@ -29,7 +30,7 @@ export function NewFileHereGridLayout(props: {
         description={"You can add template from the Action Panel"}
         setRefresh={setRefresh}
       />
-      <Grid.Section title={"Template"} subtitle={templateFiles.length + ""}>
+      <Grid.Section title={"Template"}>
         {templateFiles.map((template, index) => {
           return (
             <Grid.Item
@@ -41,6 +42,7 @@ export function NewFileHereGridLayout(props: {
                 tooltip: template.name + "." + template.extension,
               }}
               title={template.name}
+              quickLook={{ path: template.path, name: template.name }}
               actions={
                 <ActionNewTemplateFileHere
                   template={template}
@@ -54,7 +56,7 @@ export function NewFileHereGridLayout(props: {
         })}
       </Grid.Section>
       {!isLoading && showDocument && (
-        <Grid.Section title={"Document"} subtitle={documentFileTypes.length + ""}>
+        <Grid.Section title={"Document"}>
           {documentFileTypes.map((fileType, index) => {
             return (
               <NewFileHereItem
@@ -70,7 +72,7 @@ export function NewFileHereGridLayout(props: {
         </Grid.Section>
       )}
       {!isLoading && showCode && (
-        <Grid.Section title={"Code"} subtitle={codeFileTypes.length + ""}>
+        <Grid.Section title={"Code"}>
           {codeFileTypes.map((fileType, index) => {
             return (
               <NewFileHereItem
@@ -86,7 +88,7 @@ export function NewFileHereGridLayout(props: {
         </Grid.Section>
       )}
       {!isLoading && showScript && (
-        <Grid.Section title={"Script"} subtitle={scriptFileTypes.length + ""}>
+        <Grid.Section title={"Script"}>
           {scriptFileTypes.map((fileType, index) => {
             return (
               <NewFileHereItem

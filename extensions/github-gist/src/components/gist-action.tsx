@@ -3,7 +3,7 @@ import { preference, raySo } from "../util/utils";
 import { deleteGist, Gist, GITHUB_GISTS, starGist, unStarGist } from "../util/gist-utils";
 import CreateGist from "../create-gist";
 import { Dispatch, SetStateAction } from "react";
-import { refreshNumber } from "../hooks/hooks";
+import { alertDialog, refreshNumber } from "../hooks/hooks";
 
 export function GistAction(props: {
   gistArray: Gist[];
@@ -49,6 +49,12 @@ export function GistAction(props: {
           icon={Icon.Link}
           shortcut={{ modifiers: ["cmd"], key: "l" }}
           content={gistArray[gistIndex].html_url}
+        />
+        <Action.CopyToClipboard
+          title={"Copy Raw Link"}
+          icon={Icon.Link}
+          shortcut={{ modifiers: ["cmd", "shift"], key: "l" }}
+          content={gistArray[gistIndex].file[0].raw_url}
         />
         <Action.OpenInBrowser
           title={"Open in Browser"}
@@ -98,15 +104,23 @@ export function GistAction(props: {
                   <Action
                     title={"Delete Gist"}
                     icon={Icon.Trash}
-                    shortcut={{ modifiers: ["cmd"], key: "d" }}
+                    shortcut={{ modifiers: ["ctrl"], key: "x" }}
                     onAction={async () => {
-                      const response = await deleteGist(gistArray[gistIndex].gist_id);
-                      if (response.status == 204) {
-                        setRefresh(refreshNumber);
-                        await showToast(Toast.Style.Success, "Delete gist success!");
-                      } else {
-                        await showToast(Toast.Style.Failure, "Delete gist failure.");
-                      }
+                      await alertDialog(
+                        Icon.Trash,
+                        "Delete Gist",
+                        "Are you sure you want to delete this gist?",
+                        "Delete",
+                        async () => {
+                          const response = await deleteGist(gistArray[gistIndex].gist_id);
+                          if (response.status == 204) {
+                            setRefresh(refreshNumber);
+                            await showToast(Toast.Style.Success, "Delete gist success!");
+                          } else {
+                            await showToast(Toast.Style.Failure, "Delete gist failure.");
+                          }
+                        },
+                      );
                     }}
                   />
                 </>

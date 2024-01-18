@@ -1,10 +1,10 @@
 import { Action, ActionPanel, closeMainWindow, Detail, environment, getPreferenceValues, List } from "@raycast/api";
+import { exec } from "child_process";
 import { existsSync, lstatSync, readFileSync } from "fs";
-import open from "open";
 import { homedir } from "os";
 import config from "parse-git-config";
 import { dirname } from "path";
-import { ReactElement } from "react";
+import { useState, ReactElement, Fragment } from "react";
 import tildify from "tildify";
 import { CachedProjectEntry, Preferences, ProjectEntry, VSCodeBuild } from "./types";
 
@@ -20,15 +20,24 @@ const build: VSCodeBuild = preferences.build;
 const appKeyMapping = {
   Code: "com.microsoft.VSCode",
   "Code - Insiders": "com.microsoft.VSCodeInsiders",
+  "VSCodium < 1.71": "com.visualstudio.code.oss",
+  VSCodium: "com.vscodium",
+  Cursor: "Cursor",
 } as const;
 const appKey: string = appKeyMapping[build] ?? appKeyMapping.Code;
 
 const STORAGE = `${homedir()}/Library/Application Support/${build}/User/globalStorage/alefragnani.project-manager`;
 
+const remotePrefix = "vscode-remote://";
+
 function getProjectEntries(): ProjectEntry[] {
   const storagePath = getPreferencesPath() || STORAGE;
   const savedProjectsFile = `${storagePath}/projects.json`;
-  const cachedProjectsFiles = [`${storagePath}/projects_cache_git.json`, `${storagePath}/projects_cache_any.json`];
+  const cachedProjectsFiles = [
+    `${storagePath}/projects_cache_git.json`,
+    `${storagePath}/projects_cache_any.json`,
+    `${storagePath}/projects_cache_vscode.json`,
+  ];
 
   let projectEntries: ProjectEntry[] = [];
   if (existsSync(savedProjectsFile)) {
@@ -40,6 +49,9 @@ function getProjectEntries(): ProjectEntry[] {
     if (existsSync(cachedFile)) {
       const cachedEntries: CachedProjectEntry[] = JSON.parse(readFileSync(cachedFile).toString());
       cachedEntries.forEach(({ name, fullPath }) => {
+        if (projectEntries.find(({ rootPath }) => rootPath === fullPath)) {
+          return;
+        }
         projectEntries.push({ name, rootPath: fullPath, tags: [], enabled: true });
       });
     }
@@ -51,6 +63,22 @@ function getProjectEntries(): ProjectEntry[] {
 
   return projectEntries;
 }
+
+function getProjectTags(projectEntries: ProjectEntry[]): string[] {
+  return projectEntries?.reduce((tags: string[], project: ProjectEntry) => {
+    project.tags?.forEach((tag) => {
+      if (!tags.includes(tag)) {
+        tags.push(tag);
+      }
+    });
+
+    return tags.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  }, []);
+}
+
+const filterProjectsByTag = (projects: ProjectEntry[], selectedTag: string): ProjectEntry[] => {
+  return projects.filter((project) => (selectedTag ? project.tags?.find((tag) => tag === selectedTag) : true));
+};
 
 function getPreferencesPath(): string | undefined {
   const path = preferences.projectManagerDataPath;
@@ -94,10 +122,8 @@ function getProjectsGroupedByTagAsElements(projectEntries: ProjectEntry[]): Reac
   projectsGrouped.forEach((value, key) => {
     elements.push(
       <List.Section key={key} title={key}>
-        {value?.map((project, index) => (
-          <ProjectListItem key={project.rootPath + index} {...project} />
-        ))}
-      </List.Section>
+        {value?.map((project, index) => <ProjectListItem key={project.rootPath + index} {...project} />)}
+      </List.Section>,
     );
   });
   return elements;
@@ -106,10 +132,14 @@ function getProjectsGroupedByTagAsElements(projectEntries: ProjectEntry[]): Reac
 export default function Command() {
   const elements: ReactElement[] = [];
   const projectEntries = getProjectEntries();
+  const projectTags = getProjectTags(projectEntries);
+
+  const [selectedTag, setSelectedTag] = useState("");
+
   if (!projectEntries || projectEntries.length === 0) {
     return (
       <Detail
-        markdown="To use this extension, the Visual Studio Extension 
+        markdown="To use this extension, the Visual Studio Extension
       [Project Manager](https://marketplace.visualstudio.com/items?itemName=alefragnani.project-manager)
        is required."
       />
@@ -118,16 +148,41 @@ export default function Command() {
 
   const sortedProjects = getSortedProjects(projectEntries);
 
-  if (preferences.groupProjectsByTag) {
+  if (preferences.groupProjectsByTag && !selectedTag) {
+    // don't group if filtering
     const groupedProjects = getProjectsGroupedByTagAsElements(sortedProjects);
     elements.push(...groupedProjects);
   } else {
-    sortedProjects.forEach((project, index) => {
+    filterProjectsByTag(sortedProjects, selectedTag).forEach((project, index) => {
       elements.push(<ProjectListItem key={project.rootPath + index} {...project} />);
     });
   }
 
-  return <List searchBarPlaceholder="Search projects ...">{elements}</List>;
+  const handleChangeTag = (tag: string) => {
+    setSelectedTag(tag);
+  };
+
+  return (
+    <List
+      searchBarPlaceholder="Search projects ..."
+      searchBarAccessory={
+        projectTags.length ? (
+          <List.Dropdown tooltip="Tags filter" onChange={handleChangeTag} defaultValue={undefined}>
+            <List.Dropdown.Section>
+              <List.Dropdown.Item key="0" title="All Tags" value={""} />
+            </List.Dropdown.Section>
+            <List.Dropdown.Section title="Tags">
+              {projectTags.map((tag, tagIndex) => (
+                <List.Dropdown.Item key={"tag-" + tagIndex} title={tag} value={tag} />
+              ))}
+            </List.Dropdown.Section>
+          </List.Dropdown>
+        ) : null
+      }
+    >
+      <Fragment>{elements}</Fragment>
+    </List>
+  );
 }
 
 function ProjectListItem({ name, rootPath, tags }: ProjectEntry) {
@@ -140,33 +195,40 @@ function ProjectListItem({ name, rootPath, tags }: ProjectEntry) {
       subtitle={subtitle}
       icon={{ fileIcon: path }}
       keywords={tags}
-      accessoryTitle={tags?.join(", ")}
+      accessories={[{ text: tags?.join(", ") }]}
       actions={
         <ActionPanel>
           <ActionPanel.Section>
-            <Action.Open title={`Open in ${build}`} icon="command-icon.png" target={path} application={appKey} />
-            {terminalInstalled && (
+            {isRemoteProject(path) ? (
               <Action
-                title="Open in Terminal"
-                key="terminal"
+                title={`Open in ${build} (Remote)`}
+                icon="command-icon.png"
                 onAction={() => {
-                  open(path, { app: { name: terminalPath, arguments: [path] } });
+                  exec("code --remote " + parseRemoteURL(path));
                   closeMainWindow();
                 }}
+              />
+            ) : (
+              <Action.Open title={`Open in ${build}`} icon="command-icon.png" target={path} application={appKey} />
+            )}
+            {terminalInstalled && (
+              <Action.Open
+                title="Open in Terminal"
+                key="terminal"
                 icon={{ fileIcon: terminalPath }}
                 shortcut={{ modifiers: ["cmd"], key: "t" }}
+                target={path}
+                application={terminalPath}
               />
             )}
             {gitClientInstalled && isGitRepo(path) && (
-              <Action
+              <Action.Open
                 title="Open in Git client"
                 key="git-client"
-                onAction={() => {
-                  open(path, { app: { name: gitClientPath, arguments: [path] } });
-                  closeMainWindow();
-                }}
                 icon={{ fileIcon: gitClientPath }}
                 shortcut={{ modifiers: ["cmd"], key: "g" }}
+                target={path}
+                application={gitClientPath}
               />
             )}
             <Action.ShowInFinder path={path} />
@@ -208,4 +270,14 @@ function DevelopmentActionSection() {
 function isGitRepo(path: string): boolean {
   const gitConfig = config.sync({ cwd: path, path: ".git/config", expandKeys: true });
   return !!gitConfig.core;
+}
+
+function isRemoteProject(path: string): boolean {
+  return path.startsWith(remotePrefix);
+}
+
+function parseRemoteURL(path: string): string {
+  path = path.slice(remotePrefix.length);
+  const index = path.indexOf("/");
+  return path.slice(0, index) + " " + path.slice(index) + "/";
 }
