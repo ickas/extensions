@@ -12,7 +12,8 @@
     "thomas",
     "peduarte",
     "pernielsentikaer",
-    "mil3na"
+    "mil3na",
+    "clemb8"
   ],
   "categories": [
     "Productivity"
@@ -224,7 +225,7 @@
   "dependencies": {
     "@linear/sdk": "^13.0.0",
     "@raycast/api": "^1.64.5",
-    "@raycast/utils": "^1.10.1",
+    "@raycast/utils": "^1.12.1",
     "date-fns": "^3.1.0",
     "file-type": "^18.7.0",
     "lodash": "^4.17.21",
